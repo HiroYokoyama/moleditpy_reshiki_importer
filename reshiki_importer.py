@@ -1,8 +1,11 @@
-"""Open ReShiki drawings (.rsk) in the MoleditPy 2D editor.
+"""Open ReShiki drawings (.rsk) in the MoleditPy 2D editor, or paste them.
 
 A .rsk file is ReShiki's document as JSON. The molecule is imported: atoms,
 bonds, charges, radicals and wedge/hash stereo. Reaction arrows, text, shapes
 and other figure content have no place in the editor and are skipped.
+
+Edit > Paste from ReShiki (Ctrl+Alt+V) adds what ReShiki last copied to the
+current drawing.
 """
 
 import json
@@ -12,11 +15,11 @@ import os
 from collections import Counter
 
 PLUGIN_NAME = "ReShiki Importer"
-PLUGIN_VERSION = "0.1.1"
+PLUGIN_VERSION = "0.2.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
-    "Open ReShiki drawings (.rsk) in the 2D editor with their atoms, bonds, "
-    "charges, radicals and wedge/hash stereo."
+    "Open ReShiki drawings (.rsk) in the 2D editor, or paste them from ReShiki "
+    "with Ctrl+Alt+V, with their atoms, bonds, charges, radicals and wedge/hash stereo."
 )
 PLUGIN_CATEGORY = "Import"
 PLUGIN_TAGS = ["Import", "ReShiki"]
@@ -31,6 +34,15 @@ KNOWN_VERSION = 15
 BOND_LENGTH = 75.0
 # ReShiki's default bond length, used when a drawing has no bonds to measure.
 RESHIKI_BOND_LENGTH = 42.0
+
+PASTE_SHORTCUT = "Ctrl+Alt+V"
+# ReShiki's own clipboard format, as Windows registers it and as Qt names it.
+_CLIPBOARD_FORMATS = (
+    'application/x-qt-windows-mime;value="dev.reshiki.drawing"',
+    "dev.reshiki.drawing",
+)
+# Where ReShiki has no native clipboard (Linux) it copies the document as text.
+_TEXT_PREFIXES = ("RESHIKI_DRAWING_V1\n", "MORUNO_DRAWING_V1\n")
 
 WEDGE = 1
 DASH = 2
@@ -209,6 +221,11 @@ def read_rsk(path):
             document = json.load(handle)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RskError(f"Could not read {os.path.basename(path)}: {exc}") from exc
+    return convert(document)
+
+
+def convert(document):
+    """Convert a decoded document. Returns ``(atoms, bonds, positions, notes)``."""
     atoms, bonds, notes = parse_rsk(document)
     if not atoms:
         raise RskError("This ReShiki drawing contains no atoms to import.")
@@ -216,18 +233,43 @@ def read_rsk(path):
     return atoms, bonds, layout(atoms, bonds), notes
 
 
-def summary(atoms, bonds, notes):
-    text = f"Imported {len(atoms)} atoms and {len(bonds)} bonds from ReShiki."
+def summary(atoms, bonds, notes, verb="Imported"):
+    text = f"{verb} {len(atoms)} atoms and {len(bonds)} bonds from ReShiki."
     if notes:
         text += " " + "; ".join(f"{count} {label}" for label, count in sorted(notes.items())) + "."
     return text
 
 
-def load_into_editor(context, atoms, bonds, positions):
+def clipboard_document(mime):
+    """The ReShiki document on the clipboard, decoded, or None when there is none."""
+    if mime is None:
+        return None
+    for fmt in _CLIPBOARD_FORMATS:
+        if mime.hasFormat(fmt):
+            raw = bytes(mime.data(fmt))
+            # Windows rounds clipboard memory up, so the JSON can trail NULs.
+            text = raw.decode("utf-8", errors="replace").rstrip("\x00")
+            break
+    else:
+        text = mime.text() if mime.hasText() else ""
+        for prefix in _TEXT_PREFIXES:
+            if text.startswith(prefix):
+                text = text[len(prefix):]
+                break
+        else:
+            return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise RskError(f"The ReShiki drawing on the clipboard could not be read: {exc}") from exc
+
+
+def load_into_editor(context, atoms, bonds, positions, replace=True):
     from PyQt6.QtCore import QPointF
 
     scene = context.scene
-    context.clear_canvas(push_to_undo=True)
+    if replace:
+        context.clear_canvas(push_to_undo=True)
     cx, cy = view_center(context)
     items = {}
     for atom in atoms:
@@ -274,6 +316,25 @@ def open_rsk(path):
     _context.show_status_message(summary(atoms, bonds, notes), 8000)
 
 
+def paste_from_clipboard():
+    """Add the drawing ReShiki last copied to the 2D editor, at the view centre."""
+    from PyQt6.QtWidgets import QApplication
+
+    try:
+        document = clipboard_document(QApplication.clipboard().mimeData())
+        if document is None:
+            _context.show_status_message(
+                "The clipboard holds no ReShiki drawing. Copy one in ReShiki first.", 5000
+            )
+            return
+        atoms, bonds, positions, notes = convert(document)
+    except RskError as exc:
+        _warn(str(exc))
+        return
+    load_into_editor(_context, atoms, bonds, positions, replace=False)
+    _context.show_status_message(summary(atoms, bonds, notes, "Pasted"), 8000)
+
+
 def _handle_drop(path):
     if not str(path).lower().endswith(EXTENSION):
         return False
@@ -289,3 +350,6 @@ def initialize(context):
     _context = context
     context.register_file_opener(EXTENSION, open_rsk)
     context.register_drop_handler(_handle_drop)
+    context.add_menu_action(
+        "Edit/Paste from ReShiki", paste_from_clipboard, shortcut=PASTE_SHORTCUT
+    )

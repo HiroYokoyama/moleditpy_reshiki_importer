@@ -16,6 +16,16 @@ generation.
 The drawing replaces the current 2D structure as one undo step. The status bar says
 what was imported and what was left out.
 
+### Paste from ReShiki
+
+Copy in ReShiki (Ctrl+C), then in MoleditPy choose **Edit → Paste from ReShiki** or
+press **Ctrl+Alt+V**. The copied structure is added to the current drawing at the centre
+of the view, as one undo step; the same rules as opening a file apply to what is kept.
+
+This reads ReShiki's own clipboard data: its native format on Windows, and its text copy
+on Linux. On macOS ReShiki copies to a pasteboard type Qt does not expose, so use a
+`.rsk` file there instead.
+
 ## What is imported
 
 | ReShiki | MoleditPy |

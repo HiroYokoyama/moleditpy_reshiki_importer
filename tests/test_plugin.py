@@ -26,6 +26,7 @@ class FakeContext:
     def __init__(self):
         self.openers = {}
         self.drop_handlers = []
+        self.menu_actions = {}
         self.messages = []
         self.calls = []
         self.scene = FakeScene()
@@ -35,6 +36,9 @@ class FakeContext:
 
     def register_drop_handler(self, callback, priority=0):
         self.drop_handlers.append(callback)
+
+    def add_menu_action(self, path, callback, text=None, icon=None, shortcut=None):
+        self.menu_actions[path] = (callback, shortcut)
 
     def show_status_message(self, message, timeout=3000):
         self.messages.append(message)
@@ -73,6 +77,24 @@ class FakeScene:
         self.bonds.append((start, end, bond_order, bond_stereo))
 
 
+class FakeMime:
+    def __init__(self, formats=None, text=None):
+        self.formats = formats or {}
+        self._text = text
+
+    def hasFormat(self, fmt):
+        return fmt in self.formats
+
+    def data(self, fmt):
+        return self.formats[fmt]
+
+    def hasText(self):
+        return self._text is not None
+
+    def text(self):
+        return self._text
+
+
 class FakePoint:
     def __init__(self, x, y):
         self._x, self._y = x, y
@@ -93,9 +115,13 @@ def qt_stub(monkeypatch):
     widgets.QMessageBox = None
     package = types.ModuleType("PyQt6")
     package.QtCore, package.QtWidgets = core, widgets
+    clipboard = types.SimpleNamespace(mime=None)
+    clipboard.mimeData = lambda: clipboard.mime
+    widgets.QApplication = types.SimpleNamespace(clipboard=lambda: clipboard)
     monkeypatch.setitem(sys.modules, "PyQt6", package)
     monkeypatch.setitem(sys.modules, "PyQt6.QtCore", core)
     monkeypatch.setitem(sys.modules, "PyQt6.QtWidgets", widgets)
+    return clipboard
 
 
 def atom(atom_id, element="C", x=0.0, y=0.0, **extra):
@@ -131,11 +157,14 @@ def test_importing_needs_no_qt_or_rdkit():
     assert not any("PyQt6" in line or "rdkit" in line for line in top_level)
 
 
-def test_initialize_registers_the_opener_and_drop_handler(plugin):
+def test_initialize_registers_the_opener_drop_handler_and_paste(plugin):
     context = FakeContext()
     plugin.initialize(context)
     assert set(context.openers) == {".rsk"}
     assert len(context.drop_handlers) == 1
+    assert context.menu_actions == {
+        "Edit/Paste from ReShiki": (plugin.paste_from_clipboard, "Ctrl+Alt+V")
+    }
 
 
 def test_atoms_charges_and_radicals(plugin):
@@ -365,3 +394,62 @@ def test_every_drawing_in_the_reshiki_repository_imports():
         if "rdkit" in sys.modules:
             assert not any("kekulized" in label for label in notes), (path, notes)
     assert imported
+
+
+ETHANOL = drawing([atom(1), atom(2, x=42), atom(3, "O", 84)], [bond(1, 2), bond(2, 3)])
+
+
+@pytest.mark.parametrize(
+    "fmt", ['application/x-qt-windows-mime;value="dev.reshiki.drawing"', "dev.reshiki.drawing"]
+)
+def test_clipboard_reads_reshikis_native_format(plugin, fmt):
+    # Windows hands back the whole rounded-up allocation, NULs included.
+    raw = json.dumps(ETHANOL).encode("utf-8") + b"\x00\x00\x00"
+    mime = FakeMime({fmt: raw}, text="CCO")
+    assert plugin.clipboard_document(mime) == ETHANOL
+
+
+@pytest.mark.parametrize("prefix", ["RESHIKI_DRAWING_V1\n", "MORUNO_DRAWING_V1\n"])
+def test_clipboard_reads_reshikis_text_copy(plugin, prefix):
+    mime = FakeMime(text=prefix + json.dumps(ETHANOL))
+    assert plugin.clipboard_document(mime) == ETHANOL
+
+
+@pytest.mark.parametrize("mime", [None, FakeMime(), FakeMime(text="CCO"), FakeMime(text='{"version": 15}')])
+def test_clipboard_without_a_reshiki_drawing(plugin, mime):
+    assert plugin.clipboard_document(mime) is None
+
+
+def test_clipboard_with_a_broken_drawing_is_an_error(plugin):
+    with pytest.raises(plugin.RskError):
+        plugin.clipboard_document(FakeMime(text="RESHIKI_DRAWING_V1\n{not json"))
+
+
+def test_paste_adds_to_the_drawing(plugin, qt_stub):
+    qt_stub.mime = FakeMime({"dev.reshiki.drawing": json.dumps(ETHANOL).encode()})
+    context = FakeContext()
+    context.scene.atoms.append(("N", 0.0, 0.0, 0, 0))
+    plugin.initialize(context)
+    context.menu_actions["Edit/Paste from ReShiki"][0]()
+    assert [a[0] for a in context.scene.atoms] == ["N", "C", "C", "O"]
+    assert context.calls == ["refresh", "undo"]
+    assert context.messages[-1].startswith("Pasted 3 atoms and 2 bonds from ReShiki.")
+
+
+def test_paste_with_nothing_to_paste_leaves_the_drawing(plugin, qt_stub):
+    qt_stub.mime = FakeMime(text="CCO")
+    context = FakeContext()
+    plugin.initialize(context)
+    plugin.paste_from_clipboard()
+    assert context.calls == [] and context.scene.atoms == []
+    assert "no ReShiki drawing" in context.messages[-1]
+
+
+@pytest.mark.parametrize("text", ["{not json", json.dumps(drawing([]))])
+def test_paste_of_an_unusable_drawing_warns(plugin, qt_stub, text):
+    qt_stub.mime = FakeMime(text="RESHIKI_DRAWING_V1\n" + text)
+    context = FakeContext()
+    plugin.initialize(context)
+    plugin.paste_from_clipboard()
+    assert context.calls == []
+    assert "ReShiki" in context.messages[-1]
