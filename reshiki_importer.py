@@ -12,7 +12,7 @@ import os
 from collections import Counter
 
 PLUGIN_NAME = "ReShiki Importer"
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.1.1"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Open ReShiki drawings (.rsk) in the 2D editor with their atoms, bonds, "
