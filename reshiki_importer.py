@@ -12,10 +12,11 @@ import json
 import logging
 import math
 import os
+import sys
 from collections import Counter
 
 PLUGIN_NAME = "ReShiki Importer"
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.2.1"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Open ReShiki drawings (.rsk) in the 2D editor, or paste them from ReShiki "
@@ -36,10 +37,15 @@ BOND_LENGTH = 75.0
 RESHIKI_BOND_LENGTH = 42.0
 
 PASTE_SHORTCUT = "Ctrl+Alt+V"
-# ReShiki's own clipboard format, as Windows registers it and as Qt names it.
+# ReShiki's own clipboard format: the registered Windows format name and the
+# macOS pasteboard type.
+NATIVE_TYPE = "dev.reshiki.drawing"
+# The same cap ReShiki puts on clipboard data.
+CLIPBOARD_LIMIT = 64 * 1024 * 1024
+# The native format as Qt names it.
 _CLIPBOARD_FORMATS = (
-    'application/x-qt-windows-mime;value="dev.reshiki.drawing"',
-    "dev.reshiki.drawing",
+    f'application/x-qt-windows-mime;value="{NATIVE_TYPE}"',
+    NATIVE_TYPE,
 )
 # Where ReShiki has no native clipboard (Linux) it copies the document as text.
 _TEXT_PREFIXES = ("RESHIKI_DRAWING_V1\n", "MORUNO_DRAWING_V1\n")
@@ -240,16 +246,78 @@ def summary(atoms, bonds, notes, verb="Imported"):
     return text
 
 
-def clipboard_document(mime):
-    """The ReShiki document on the clipboard, decoded, or None when there is none."""
-    if mime is None:
+def macos_pasteboard_data(kind=NATIVE_TYPE):
+    """Bytes of ``kind`` on the macOS general pasteboard, or None.
+
+    Qt only lists pasteboard types it has a converter for, so ReShiki's own
+    type never reaches ``QMimeData`` on macOS; read it from AppKit instead.
+    Every call has its exact prototype: ``objc_msgSend`` with a wrong one
+    crashes the process rather than raising.
+    """
+    import ctypes
+
+    try:
+        objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+        ctypes.CDLL("/System/Library/Frameworks/AppKit.framework/AppKit")
+    except OSError:
         return None
-    for fmt in _CLIPBOARD_FORMATS:
+    ptr = ctypes.c_void_p
+    objc.objc_getClass.restype = ptr
+    objc.objc_getClass.argtypes = [ctypes.c_char_p]
+    objc.sel_registerName.restype = ptr
+    objc.sel_registerName.argtypes = [ctypes.c_char_p]
+    objc.objc_autoreleasePoolPush.restype = ptr
+    objc.objc_autoreleasePoolPush.argtypes = []
+    objc.objc_autoreleasePoolPop.restype = None
+    objc.objc_autoreleasePoolPop.argtypes = [ptr]
+    address = ctypes.cast(objc.objc_msgSend, ptr).value
+    send = ctypes.CFUNCTYPE(ptr, ptr, ptr)(address)
+    send_object = ctypes.CFUNCTYPE(ptr, ptr, ptr, ptr)(address)
+    send_string = ctypes.CFUNCTYPE(ptr, ptr, ptr, ctypes.c_char_p)(address)
+    send_length = ctypes.CFUNCTYPE(ctypes.c_ulong, ptr, ptr)(address)
+
+    def sel(name):
+        return objc.sel_registerName(name.encode())
+
+    pool = objc.objc_autoreleasePoolPush()
+    try:
+        pasteboard_class = objc.objc_getClass(b"NSPasteboard")
+        string_class = objc.objc_getClass(b"NSString")
+        if not pasteboard_class or not string_class:
+            return None
+        pasteboard = send(pasteboard_class, sel("generalPasteboard"))
+        name = send_string(string_class, sel("stringWithUTF8String:"), kind.encode())
+        if not pasteboard or not name:
+            return None
+        data = send_object(pasteboard, sel("dataForType:"), name)
+        if not data:
+            return None
+        length = send_length(data, sel("length"))
+        if length > CLIPBOARD_LIMIT:
+            raise RskError("The ReShiki drawing on the clipboard is too large to paste.")
+        start = send(data, sel("bytes"))
+        # Copy out before the pool releases the NSData.
+        return ctypes.string_at(start, length) if start and length else None
+    finally:
+        objc.objc_autoreleasePoolPop(pool)
+
+
+def clipboard_document(mime, native=None):
+    """The ReShiki document on the clipboard, decoded, or None when there is none.
+
+    ``native`` is ReShiki's own format read outside Qt (macOS), used when Qt
+    does not offer it.
+    """
+    if mime is None and native is None:
+        return None
+    raw = native
+    for fmt in _CLIPBOARD_FORMATS if mime is not None else ():
         if mime.hasFormat(fmt):
             raw = bytes(mime.data(fmt))
-            # Windows rounds clipboard memory up, so the JSON can trail NULs.
-            text = raw.decode("utf-8", errors="replace").rstrip("\x00")
             break
+    if raw is not None:
+        # Windows rounds clipboard memory up, so the JSON can trail NULs.
+        text = raw.decode("utf-8", errors="replace").rstrip("\x00")
     else:
         text = mime.text() if mime.hasText() else ""
         for prefix in _TEXT_PREFIXES:
@@ -321,7 +389,8 @@ def paste_from_clipboard():
     from PyQt6.QtWidgets import QApplication
 
     try:
-        document = clipboard_document(QApplication.clipboard().mimeData())
+        native = macos_pasteboard_data() if sys.platform == "darwin" else None
+        document = clipboard_document(QApplication.clipboard().mimeData(), native)
         if document is None:
             _context.show_status_message(
                 "The clipboard holds no ReShiki drawing. Copy one in ReShiki first.", 5000

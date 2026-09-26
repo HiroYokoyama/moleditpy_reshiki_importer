@@ -453,3 +453,61 @@ def test_paste_of_an_unusable_drawing_warns(plugin, qt_stub, text):
     plugin.paste_from_clipboard()
     assert context.calls == []
     assert "ReShiki" in context.messages[-1]
+
+
+def test_clipboard_reads_native_bytes_read_outside_qt(plugin):
+    raw = json.dumps(ETHANOL).encode("utf-8")
+    assert plugin.clipboard_document(None, raw) == ETHANOL
+    assert plugin.clipboard_document(FakeMime(text="CCO"), raw) == ETHANOL
+
+
+def test_paste_reads_the_macos_pasteboard_only_on_macos(plugin, qt_stub, monkeypatch):
+    reads = []
+
+    def fake_read():
+        reads.append(True)
+        return json.dumps(ETHANOL).encode("utf-8")
+
+    monkeypatch.setattr(plugin, "macos_pasteboard_data", fake_read)
+    qt_stub.mime = FakeMime()
+    context = FakeContext()
+    plugin.initialize(context)
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    plugin.paste_from_clipboard()
+    assert reads == [] and context.scene.atoms == []
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    plugin.paste_from_clipboard()
+    assert reads == [True]
+    assert [a[0] for a in context.scene.atoms] == ["C", "C", "O"]
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="AppKit is present on macOS")
+def test_macos_reader_is_inert_elsewhere(plugin):
+    assert plugin.macos_pasteboard_data() is None
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="needs the macOS pasteboard")
+def test_macos_reader_reads_reshikis_pasteboard_type(plugin, tmp_path):
+    """Write the type the way ReShiki does (AppKit, from Swift) and read it back."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("swift"):
+        pytest.skip("swift is not installed")
+    payload = tmp_path / "ethanol.json"
+    payload.write_bytes(json.dumps(ETHANOL).encode("utf-8"))
+    writer = tmp_path / "write.swift"
+    writer.write_text(
+        "import AppKit\n"
+        "let data = try! Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))\n"
+        "let board = NSPasteboard.general\n"
+        "board.clearContents()\n"
+        'precondition(board.setData(data, forType: NSPasteboard.PasteboardType("dev.reshiki.drawing")))\n',
+        encoding="utf-8",
+    )
+    subprocess.run(["swift", str(writer), str(payload)], check=True, timeout=300)
+    assert plugin.macos_pasteboard_data() == payload.read_bytes()
+    assert plugin.macos_pasteboard_data("dev.reshiki.not-there") is None
+    assert plugin.clipboard_document(None, plugin.macos_pasteboard_data()) == ETHANOL
