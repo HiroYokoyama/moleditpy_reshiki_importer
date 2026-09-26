@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.1.0 — without leading v)'
+        required: true
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Create and push tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Verify version matches plugin source
+        # Registration rejects an asset whose PLUGIN_VERSION disagrees with the
+        # tag, so fail here instead of after the release exists.
+        run: |
+          FILE_VERSION=$(python3 -c "
+          import re
+          text = open('reshiki_importer.py', encoding='utf-8').read()
+          m = re.search(r\"PLUGIN_VERSION\s*=\s*['\\\"](.+?)['\\\"]\", text)
+          print(m.group(1).strip() if m else '')
+          ")
+          echo "Tag version  : $VERSION"
+          echo "File version : $FILE_VERSION"
+          if [ "$VERSION" != "$FILE_VERSION" ]; then
+            echo "ERROR: tag '$VERSION' does not match PLUGIN_VERSION '$FILE_VERSION'"
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" \
+            --title "ReShiki Importer $VERSION" \
+            --generate-notes \
+            reshiki_importer.py
+
+      # No-op unless a REGISTRY_PAT secret exists (only the registry maintainer
+      # can issue one); third-party repos use the registration issue instead.
+      - name: Trigger the plugin registry update
+        id: dispatch
+        continue-on-error: true
+        env:
+          REGISTRY_PAT: ${{ secrets.REGISTRY_PAT }}
+        run: |
+          if [ -z "$REGISTRY_PAT" ]; then
+            echo "registered=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          curl -sf -X POST \
+            -H "Authorization: Bearer $REGISTRY_PAT" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/HiroYokoyama/moleditpy-plugins/dispatches" \
+            -d "{\"event_type\":\"plugin_release\",\"client_payload\":{\"repo\":\"${{ github.repository }}\",\"tag\":\"v$VERSION\"}}"
+          echo "registered=true" >> "$GITHUB_OUTPUT"
+
+      - name: How to get into the plugin registry
+        if: steps.dispatch.outputs.registered != 'true'
+        run: |
+          echo "Release published, but it was NOT registered automatically:"
+          echo "no REGISTRY_PAT secret is set on this repository."
+          echo
+          echo "Open a 'Request Plugin Registration / Update' issue with the release URL:"
+          echo "  https://github.com/HiroYokoyama/moleditpy-plugins/issues/new/choose"
+          echo "  asset: reshiki_importer.py"

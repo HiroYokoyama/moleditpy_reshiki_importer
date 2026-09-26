@@ -1,0 +1,281 @@
+"""Open ReShiki drawings (.rsk) in the MoleditPy 2D editor.
+
+A .rsk file is ReShiki's document as JSON. The molecule is imported: atoms,
+bonds, charges, radicals and wedge/hash stereo. Reaction arrows, text, shapes
+and other figure content have no place in the editor and are skipped.
+"""
+
+import json
+import logging
+import math
+import os
+from collections import Counter
+
+PLUGIN_NAME = "ReShiki Importer"
+PLUGIN_VERSION = "0.1.0"
+PLUGIN_AUTHOR = "HiroYokoyama"
+PLUGIN_DESCRIPTION = (
+    "Open ReShiki drawings (.rsk) in the 2D editor with their atoms, bonds, "
+    "charges, radicals and wedge/hash stereo."
+)
+PLUGIN_CATEGORY = "Import"
+PLUGIN_TAGS = ["Import", "ReShiki"]
+PLUGIN_DEPENDENCIES = []
+PLUGIN_OPTIONAL_DEPENDENCIES = []
+PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=4.0.0, <5.0.0"
+
+EXTENSION = ".rsk"
+# The newest ReShiki document version this importer was written against.
+KNOWN_VERSION = 15
+# MoleditPy's standard 2D bond length, in scene units.
+BOND_LENGTH = 75.0
+# ReShiki's default bond length, used when a drawing has no bonds to measure.
+RESHIKI_BOND_LENGTH = 42.0
+
+WEDGE = 1
+DASH = 2
+_WEDGE_DISPLAYS = {"wedge", "hollow_wedge", "bold"}
+_DASH_DISPLAYS = {"hash", "hashed"}
+AROMATIC = "aromatic"
+# ReShiki bond orders MoleditPy cannot draw, and what they become.
+_APPROXIMATED = {
+    5: (1, "dative bonds imported as single"),
+    6: (3, "quadruple bonds imported as triple"),
+    7: (1, "partial bonds imported as single"),
+}
+
+_context = None
+
+
+class RskError(ValueError):
+    """The file is not a ReShiki drawing this importer can read."""
+
+
+def parse_rsk(document):
+    """Turn a decoded .rsk document into atoms and bonds for the editor.
+
+    Returns ``(atoms, bonds, notes)``. Atoms carry ``id, symbol, x, y, charge,
+    radical, explicit_h``; bonds carry ``a, b, order, stereo`` where ``order``
+    may still be ``AROMATIC``. ``notes`` counts what was skipped or changed.
+    """
+    if not isinstance(document, dict) or not isinstance(document.get("atoms"), list):
+        raise RskError("This is not a ReShiki drawing: it has no atom list.")
+    version = document.get("version")
+    if not isinstance(version, int):
+        raise RskError("This is not a ReShiki drawing: it has no document version.")
+
+    notes = Counter()
+    if version > KNOWN_VERSION:
+        notes[f"file is ReShiki format {version}; importer knows up to {KNOWN_VERSION}"] += 1
+
+    atoms = []
+    kept = set()
+    for raw in document["atoms"]:
+        try:
+            atom_id = int(raw["id"])
+            symbol = str(raw["element"])
+            x = float(raw["position"]["x"])
+            y = float(raw["position"]["y"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RskError(f"An atom in this drawing is incomplete: {exc}") from exc
+        if symbol in ("", "*") or raw.get("centroid"):
+            notes["centroid and placeholder atoms skipped"] += 1
+            continue
+        if raw.get("isotope"):
+            notes["isotope labels dropped"] += 1
+        atoms.append(
+            {
+                "id": atom_id,
+                "symbol": symbol,
+                "x": x,
+                "y": y,
+                "charge": int(raw.get("charge", 0) or 0),
+                "radical": int(raw.get("radical_electrons", 0) or 0),
+                "explicit_h": int(raw.get("explicit_h", 0) or 0),
+            }
+        )
+        kept.add(atom_id)
+
+    bonds = []
+    for raw in document.get("bonds", []):
+        try:
+            a, b, order = int(raw["a"]), int(raw["b"]), int(raw["order"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RskError(f"A bond in this drawing is incomplete: {exc}") from exc
+        if a not in kept or b not in kept or a == b:
+            notes["bonds to skipped atoms dropped"] += 1
+            continue
+        if order == 0:
+            notes["hydrogen-interaction bonds dropped"] += 1
+            continue
+        if order == 4:
+            order = AROMATIC
+        elif order in _APPROXIMATED:
+            order, note = _APPROXIMATED[order]
+            notes[note] += 1
+        elif order not in (1, 2, 3):
+            notes["unknown bond orders imported as single"] += 1
+            order = 1
+        stereo = 0
+        if order == 1 and not raw.get("projection"):
+            display = raw.get("display", "plain")
+            if display in _WEDGE_DISPLAYS:
+                stereo = WEDGE
+            elif display in _DASH_DISPLAYS:
+                stereo = DASH
+        bonds.append({"a": a, "b": b, "order": order, "stereo": stereo})
+
+    for key, label in (
+        ("arrows", "arrows"),
+        ("annotations", "text annotations"),
+        ("graphics", "shapes"),
+        ("reactions", "reaction schemes"),
+    ):
+        count = len(document.get(key) or [])
+        if count:
+            notes[f"{label} skipped"] += count
+    return atoms, bonds, notes
+
+
+def kekulize(atoms, bonds, notes):
+    """Give aromatic bonds single/double orders, in place.
+
+    Uses RDKit, which MoleditPy ships. When the ring cannot be kekulized the
+    aromatic bonds become single so the drawing still loads.
+    """
+    aromatic = [bond for bond in bonds if bond["order"] == AROMATIC]
+    if not aromatic:
+        return
+    try:
+        from rdkit import Chem
+
+        mol = Chem.RWMol()
+        index = {}
+        for atom in atoms:
+            rd_atom = Chem.Atom(atom["symbol"])
+            rd_atom.SetFormalCharge(atom["charge"])
+            rd_atom.SetNumRadicalElectrons(atom["radical"])
+            rd_atom.SetNumExplicitHs(atom["explicit_h"])
+            index[atom["id"]] = mol.AddAtom(rd_atom)
+        for bond in bonds:
+            if bond["order"] == AROMATIC:
+                bond_type = Chem.BondType.AROMATIC
+                mol.GetAtomWithIdx(index[bond["a"]]).SetIsAromatic(True)
+                mol.GetAtomWithIdx(index[bond["b"]]).SetIsAromatic(True)
+            else:
+                bond_type = {
+                    1: Chem.BondType.SINGLE,
+                    2: Chem.BondType.DOUBLE,
+                    3: Chem.BondType.TRIPLE,
+                }[bond["order"]]
+            mol.AddBond(index[bond["a"]], index[bond["b"]], bond_type)
+            if bond_type == Chem.BondType.AROMATIC:
+                mol.GetBondBetweenAtoms(index[bond["a"]], index[bond["b"]]).SetIsAromatic(True)
+        mol.UpdatePropertyCache(strict=False)
+        Chem.FastFindRings(mol)
+        Chem.Kekulize(mol, clearAromaticFlags=True)
+        for bond in aromatic:
+            rd_bond = mol.GetBondBetweenAtoms(index[bond["a"]], index[bond["b"]])
+            bond["order"] = 2 if rd_bond.GetBondType() == Chem.BondType.DOUBLE else 1
+    except Exception as exc:  # noqa: BLE001 - any RDKit failure falls back to single bonds
+        logging.warning("%s: could not kekulize aromatic bonds: %s", PLUGIN_NAME, exc)
+        for bond in aromatic:
+            bond["order"] = 1
+        notes["aromatic bonds that could not be kekulized imported as single"] += len(aromatic)
+
+
+def layout(atoms, bonds):
+    """Scene positions for the atoms: MoleditPy bond length, centred on the origin."""
+    if not atoms:
+        return {}
+    position = {atom["id"]: (atom["x"], atom["y"]) for atom in atoms}
+    lengths = sorted(
+        math.dist(position[bond["a"]], position[bond["b"]])
+        for bond in bonds
+        if math.dist(position[bond["a"]], position[bond["b"]]) > 1e-6
+    )
+    typical = lengths[len(lengths) // 2] if lengths else RESHIKI_BOND_LENGTH
+    scale = BOND_LENGTH / typical
+    cx = sum(x for x, _ in position.values()) / len(position)
+    cy = sum(y for _, y in position.values()) / len(position)
+    # Both programs draw with y pointing down, so no flip is needed.
+    return {key: ((x - cx) * scale, (y - cy) * scale) for key, (x, y) in position.items()}
+
+
+def read_rsk(path):
+    """Read and convert a .rsk file. Returns ``(atoms, bonds, positions, notes)``."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            document = json.load(handle)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RskError(f"Could not read {os.path.basename(path)}: {exc}") from exc
+    atoms, bonds, notes = parse_rsk(document)
+    if not atoms:
+        raise RskError("This ReShiki drawing contains no atoms to import.")
+    kekulize(atoms, bonds, notes)
+    return atoms, bonds, layout(atoms, bonds), notes
+
+
+def summary(atoms, bonds, notes):
+    text = f"Imported {len(atoms)} atoms and {len(bonds)} bonds from ReShiki."
+    if notes:
+        text += " " + "; ".join(f"{count} {label}" for label, count in sorted(notes.items())) + "."
+    return text
+
+
+def load_into_editor(context, atoms, bonds, positions):
+    from PyQt6.QtCore import QPointF
+
+    scene = context.scene
+    context.clear_canvas(push_to_undo=True)
+    items = {}
+    for atom in atoms:
+        x, y = positions[atom["id"]]
+        atom_id = scene.create_atom(
+            atom["symbol"], QPointF(x, y), charge=atom["charge"], radical=atom["radical"]
+        )
+        items[atom["id"]] = scene.atom_items[atom_id]
+    for bond in bonds:
+        scene.create_bond(
+            items[bond["a"]], items[bond["b"]], bond_order=bond["order"], bond_stereo=bond["stereo"]
+        )
+    context.refresh_2d_scene()
+    context.fit_2d_view()
+    context.push_undo_checkpoint()
+
+
+def _warn(message):
+    try:
+        from PyQt6.QtWidgets import QMessageBox
+
+        QMessageBox.warning(_context.get_main_window(), PLUGIN_NAME, message)
+    except Exception:  # noqa: BLE001 - fall back to the status bar when no dialog can open
+        _context.show_status_message(message, 8000)
+
+
+def open_rsk(path):
+    """File opener: replace the 2D drawing with the ReShiki drawing at ``path``."""
+    try:
+        atoms, bonds, positions, notes = read_rsk(path)
+    except RskError as exc:
+        _warn(str(exc))
+        raise
+    load_into_editor(_context, atoms, bonds, positions)
+    _context.show_status_message(summary(atoms, bonds, notes), 8000)
+
+
+def _handle_drop(path):
+    if not str(path).lower().endswith(EXTENSION):
+        return False
+    try:
+        open_rsk(path)
+    except RskError:
+        pass
+    return True
+
+
+def initialize(context):
+    global _context
+    _context = context
+    context.register_file_opener(EXTENSION, open_rsk)
+    context.register_drop_handler(_handle_drop)
