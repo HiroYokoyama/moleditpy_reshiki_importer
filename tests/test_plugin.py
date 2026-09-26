@@ -286,9 +286,35 @@ def test_open_replaces_the_drawing(plugin, qt_stub, tmp_path):
     context.openers[".rsk"](str(path))
     assert [a[0] for a in context.scene.atoms] == ["C", "C", "O"]
     assert context.scene.bonds == [(0, 1, 1, 1), (1, 2, 1, 0)]
-    assert context.calls == ["clear", "refresh", "fit", "undo"]
+    assert context.calls == ["clear", "refresh", "undo"]
     assert "Imported 3 atoms and 2 bonds" in context.messages[-1]
     assert "1 arrows skipped" in context.messages[-1]
+
+
+def test_open_centres_the_molecule_in_the_current_view(plugin, qt_stub, tmp_path):
+    class View:
+        def viewport(self):
+            return self
+
+        def rect(self):
+            return self
+
+        def center(self):
+            return "viewport centre"
+
+        def mapToScene(self, point):
+            assert point == "viewport centre"
+            return FakePoint(500.0, -200.0)
+
+    window = types.SimpleNamespace(init_manager=types.SimpleNamespace(view_2d=View()))
+    path = tmp_path / "ethane.rsk"
+    path.write_text(json.dumps(drawing([atom(1), atom(2, x=42)], [bond(1, 2)])), encoding="utf-8")
+    context = FakeContext()
+    context.get_main_window = lambda: window
+    plugin.initialize(context)
+    context.openers[".rsk"](str(path))
+    placed = [(x, y) for _, x, y, _, _ in context.scene.atoms]
+    assert placed == [pytest.approx((462.5, -200.0)), pytest.approx((537.5, -200.0))]
 
 
 def test_open_rejects_a_broken_file_without_touching_the_drawing(plugin, qt_stub, tmp_path):

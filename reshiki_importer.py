@@ -228,11 +228,12 @@ def load_into_editor(context, atoms, bonds, positions):
 
     scene = context.scene
     context.clear_canvas(push_to_undo=True)
+    cx, cy = view_center(context)
     items = {}
     for atom in atoms:
         x, y = positions[atom["id"]]
         atom_id = scene.create_atom(
-            atom["symbol"], QPointF(x, y), charge=atom["charge"], radical=atom["radical"]
+            atom["symbol"], QPointF(x + cx, y + cy), charge=atom["charge"], radical=atom["radical"]
         )
         items[atom["id"]] = scene.atom_items[atom_id]
     for bond in bonds:
@@ -240,8 +241,17 @@ def load_into_editor(context, atoms, bonds, positions):
             items[bond["a"]], items[bond["b"]], bond_order=bond["order"], bond_stereo=bond["stereo"]
         )
     context.refresh_2d_scene()
-    context.fit_2d_view()
     context.push_undo_checkpoint()
+
+
+def view_center(context):
+    """Scene point at the middle of the 2D view, where the host places opened files."""
+    try:
+        view = context.get_main_window().init_manager.view_2d
+        center = view.mapToScene(view.viewport().rect().center())
+        return center.x(), center.y()
+    except AttributeError:
+        return 0.0, 0.0
 
 
 def _warn(message):
