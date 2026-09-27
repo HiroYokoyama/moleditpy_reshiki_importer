@@ -16,14 +16,14 @@ import sys
 from collections import Counter
 
 PLUGIN_NAME = "ReShiki Importer"
-PLUGIN_VERSION = "0.2.1"
+PLUGIN_VERSION = "0.2.2"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Open ReShiki drawings (.rsk) in the 2D editor, or paste them from ReShiki "
     "with Ctrl+Alt+V, with their atoms, bonds, charges, radicals and wedge/hash stereo."
 )
 PLUGIN_CATEGORY = "Import"
-PLUGIN_TAGS = ["Import", "ReShiki"]
+PLUGIN_TAGS = ["Import"]
 PLUGIN_DEPENDENCIES = []
 PLUGIN_OPTIONAL_DEPENDENCIES = []
 PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=4.0.0, <5.0.0"
