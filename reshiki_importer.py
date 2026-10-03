@@ -16,7 +16,7 @@ import sys
 from collections import Counter
 
 PLUGIN_NAME = "ReShiki Importer"
-PLUGIN_VERSION = "0.2.2"
+PLUGIN_VERSION = "0.2.3"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Open ReShiki drawings (.rsk) in the 2D editor, or paste them from ReShiki "
@@ -30,7 +30,7 @@ PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=4.0.0, <5.0.0"
 
 EXTENSION = ".rsk"
 # The newest ReShiki document version this importer was written against.
-KNOWN_VERSION = 15
+KNOWN_VERSION = 17
 # MoleditPy's standard 2D bond length, in scene units.
 BOND_LENGTH = 75.0
 # ReShiki's default bond length, used when a drawing has no bonds to measure.
