@@ -1,5 +1,8 @@
 # ReShiki Importer
 
+[![Tests](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/actions/workflows/test.yml/badge.svg)](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/actions/workflows/test.yml)
+[![GitHub tag](https://img.shields.io/github/v/tag/HiroYokoyama/moleditpy_reshiki_importer?label=version)](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/tags)
+[![GitHub Downloads](https://img.shields.io/github/downloads/HiroYokoyama/moleditpy_reshiki_importer/total)](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/releases)
 [![MoleditPy](https://img.shields.io/badge/MoleditPy->=4.0.0-3577F7)](https://github.com/HiroYokoyama/python_molecular_editor)
 
 A [MoleditPy](https://github.com/HiroYokoyama/python_molecular_editor) plugin that opens
@@ -53,7 +56,7 @@ and restart MoleditPy.
 
 ## Format support
 
-Written against ReShiki document format version 15 (ReShiki 0.8). A newer file still
+Written against ReShiki document format version 17 (ReShiki 0.10). A newer file still
 imports, with a note that its version is newer than the importer knows.
 
 ## Development
