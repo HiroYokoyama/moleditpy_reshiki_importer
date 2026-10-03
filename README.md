@@ -5,6 +5,8 @@
 [![GitHub Downloads](https://img.shields.io/github/downloads/HiroYokoyama/moleditpy_reshiki_importer/total)](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/releases)
 [![MoleditPy](https://img.shields.io/badge/MoleditPy->=4.0.0-3577F7)](https://github.com/HiroYokoyama/python_molecular_editor)
 
+![screenshot](img/screenshot.png)
+
 A [MoleditPy](https://github.com/HiroYokoyama/python_molecular_editor) plugin that opens
 [ReShiki](https://github.com/Ameyanagi/ReShiki) drawings (`.rsk`) in the 2D editor. Draw a
 structure in ReShiki, open it in MoleditPy, and carry on to 3D conversion and input
