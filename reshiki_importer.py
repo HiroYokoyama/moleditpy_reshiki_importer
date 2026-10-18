@@ -16,7 +16,7 @@ import sys
 from collections import Counter
 
 PLUGIN_NAME = "ReShiki Importer"
-PLUGIN_VERSION = "0.3.0a1"
+PLUGIN_VERSION = "0.3.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Open ReShiki drawings (.rsk) in the 2D editor, or paste them from ReShiki "
