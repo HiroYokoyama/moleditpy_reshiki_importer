@@ -3,7 +3,7 @@
 [![Tests](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/actions/workflows/test.yml/badge.svg)](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/actions/workflows/test.yml)
 [![GitHub tag](https://img.shields.io/github/v/tag/HiroYokoyama/moleditpy_reshiki_importer?label=version)](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/tags)
 [![GitHub Downloads](https://img.shields.io/github/downloads/HiroYokoyama/moleditpy_reshiki_importer/total)](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/releases)
-[![MoleditPy](https://img.shields.io/badge/MoleditPy->=4.0.0-3577F7)](https://github.com/HiroYokoyama/python_molecular_editor)
+[![MoleditPy](https://img.shields.io/badge/MoleditPy-5.x-3577F7)](https://github.com/HiroYokoyama/python_molecular_editor)
 
 ![screenshot](img/screenshot.png)
 
