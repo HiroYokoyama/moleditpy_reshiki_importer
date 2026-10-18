@@ -16,7 +16,7 @@ import sys
 from collections import Counter
 
 PLUGIN_NAME = "ReShiki Importer"
-PLUGIN_VERSION = "0.2.4"
+PLUGIN_VERSION = "1.0.0a1"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Open ReShiki drawings (.rsk) in the 2D editor, or paste them from ReShiki "
@@ -26,7 +26,7 @@ PLUGIN_CATEGORY = "Import"
 PLUGIN_TAGS = ["Import"]
 PLUGIN_DEPENDENCIES = []
 PLUGIN_OPTIONAL_DEPENDENCIES = []
-PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=4.0.0, <5.0.0"
+PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0a1, <6.0.0"
 
 EXTENSION = ".rsk"
 # The newest ReShiki document version this importer was written against.
@@ -333,7 +333,7 @@ def clipboard_document(mime, native=None):
 
 
 def load_into_editor(context, atoms, bonds, positions, replace=True):
-    from PyQt6.QtCore import QPointF
+    from PySide6.QtCore import QPointF
 
     scene = context.scene
     if replace:
@@ -366,7 +366,7 @@ def view_center(context):
 
 def _warn(message):
     try:
-        from PyQt6.QtWidgets import QMessageBox
+        from PySide6.QtWidgets import QMessageBox
 
         QMessageBox.warning(_context.get_main_window(), PLUGIN_NAME, message)
     except Exception:  # noqa: BLE001 - fall back to the status bar when no dialog can open
@@ -386,7 +386,7 @@ def open_rsk(path):
 
 def paste_from_clipboard():
     """Add the drawing ReShiki last copied to the 2D editor, at the view centre."""
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
 
     try:
         native = macos_pasteboard_data() if sys.platform == "darwin" else None
