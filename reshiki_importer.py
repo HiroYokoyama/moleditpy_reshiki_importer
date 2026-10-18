@@ -26,7 +26,7 @@ PLUGIN_CATEGORY = "Import"
 PLUGIN_TAGS = ["Import"]
 PLUGIN_DEPENDENCIES = []
 PLUGIN_OPTIONAL_DEPENDENCIES = []
-PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0a1, <6.0.0"
+PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0, <6.0.0"
 
 EXTENSION = ".rsk"
 # The newest ReShiki document version this importer was written against.
