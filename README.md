@@ -73,5 +73,9 @@ ReShiki repository. Without them those tests skip.
 
 ## Licence
 
-GPL-3.0 (see [LICENSE](LICENSE)). ReShiki is a separate project by Ameyanagi,
+LGPL-3.0-or-later (see [LICENSE](LICENSE)). ReShiki is a separate project by Ameyanagi,
 licensed MIT OR Apache-2.0; this plugin reads its file format and contains none of its code.
+
+## Licensing scope
+
+First-party code in this migration is LGPL-3.0-or-later. See [LICENSE](LICENSE), [COPYING](COPYING) and [dependency/provenance terms](LICENSING.md). Third-party components and historical releases retain their own terms.

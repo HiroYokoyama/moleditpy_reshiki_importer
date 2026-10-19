@@ -59,7 +59,7 @@ jobs:
           gh release create "v$VERSION" \
             --title "ReShiki Importer $VERSION" \
             --generate-notes \
-            reshiki_importer.py
+            reshiki_importer.py LICENSE COPYING LICENSING.md
 
       # No-op unless a REGISTRY_PAT secret exists (only the registry maintainer
       # can issue one); third-party repos use the registration issue instead.
