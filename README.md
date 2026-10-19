@@ -3,7 +3,7 @@
 [![Tests](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/actions/workflows/test.yml/badge.svg)](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/actions/workflows/test.yml)
 [![GitHub tag](https://img.shields.io/github/v/tag/HiroYokoyama/moleditpy_reshiki_importer?label=version)](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/tags)
 [![GitHub Downloads](https://img.shields.io/github/downloads/HiroYokoyama/moleditpy_reshiki_importer/total)](https://github.com/HiroYokoyama/moleditpy_reshiki_importer/releases)
-[![MoleditPy](https://img.shields.io/badge/MoleditPy->=4.0.0-3577F7)](https://github.com/HiroYokoyama/python_molecular_editor)
+[![MoleditPy](https://img.shields.io/badge/MoleditPy-5.x-3577F7)](https://github.com/HiroYokoyama/python_molecular_editor)
 
 ![screenshot](img/screenshot.png)
 
@@ -73,5 +73,9 @@ ReShiki repository. Without them those tests skip.
 
 ## Licence
 
-GPL-3.0 (see [LICENSE](LICENSE)). ReShiki is a separate project by Ameyanagi,
+LGPL-3.0-or-later (see [LICENSE](LICENSE)). ReShiki is a separate project by Ameyanagi,
 licensed MIT OR Apache-2.0; this plugin reads its file format and contains none of its code.
+
+## Licensing scope
+
+First-party code in this migration is LGPL-3.0-or-later. See [LICENSE](LICENSE), [COPYING](COPYING) and [dependency/provenance terms](LICENSING.md). Third-party components and historical releases retain their own terms.

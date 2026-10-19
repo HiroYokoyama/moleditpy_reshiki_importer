@@ -109,18 +109,18 @@ class FakePoint:
 @pytest.fixture
 def qt_stub(monkeypatch):
     """QPointF without a GUI toolkit, so placement runs headless."""
-    core = types.ModuleType("PyQt6.QtCore")
+    core = types.ModuleType("PySide6.QtCore")
     core.QPointF = FakePoint
-    widgets = types.ModuleType("PyQt6.QtWidgets")
+    widgets = types.ModuleType("PySide6.QtWidgets")
     widgets.QMessageBox = None
-    package = types.ModuleType("PyQt6")
+    package = types.ModuleType("PySide6")
     package.QtCore, package.QtWidgets = core, widgets
     clipboard = types.SimpleNamespace(mime=None)
     clipboard.mimeData = lambda: clipboard.mime
     widgets.QApplication = types.SimpleNamespace(clipboard=lambda: clipboard)
-    monkeypatch.setitem(sys.modules, "PyQt6", package)
-    monkeypatch.setitem(sys.modules, "PyQt6.QtCore", core)
-    monkeypatch.setitem(sys.modules, "PyQt6.QtWidgets", widgets)
+    monkeypatch.setitem(sys.modules, "PySide6", package)
+    monkeypatch.setitem(sys.modules, "PySide6.QtCore", core)
+    monkeypatch.setitem(sys.modules, "PySide6.QtWidgets", widgets)
     return clipboard
 
 
@@ -147,14 +147,14 @@ def benzene(order=4):
 def test_metadata_matches_the_registry_contract(plugin):
     for name in ("PLUGIN_NAME", "PLUGIN_VERSION", "PLUGIN_AUTHOR", "PLUGIN_DESCRIPTION"):
         assert getattr(plugin, name).strip()
-    assert re.fullmatch(r"\d+\.\d+\.\d+", plugin.PLUGIN_VERSION)
+    assert re.fullmatch(r"\d+\.\d+\.\d+(?:a\d+)?", plugin.PLUGIN_VERSION)
     assert not hasattr(plugin, "run") and not hasattr(plugin, "autorun")
 
 
 def test_importing_needs_no_qt_or_rdkit():
     source = PLUGIN.read_text(encoding="utf-8")
     top_level = [line for line in source.splitlines() if line.startswith(("import ", "from "))]
-    assert not any("PyQt6" in line or "rdkit" in line for line in top_level)
+    assert not any("PySide6" in line or "rdkit" in line for line in top_level)
 
 
 def test_initialize_registers_the_opener_drop_handler_and_paste(plugin):
