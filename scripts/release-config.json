@@ -1,0 +1,10 @@
+{
+  "source": "reshiki_importer.py",
+  "title": "ReShiki Importer",
+  "assets": [
+    "reshiki_importer.py",
+    "LICENSE",
+    "COPYING",
+    "LICENSING.md"
+  ]
+}
