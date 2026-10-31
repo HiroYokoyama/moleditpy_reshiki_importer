@@ -27,8 +27,8 @@ Copy in ReShiki (Ctrl+C), then in MoleditPy choose **Edit → Paste from ReShiki
 press **Ctrl+Alt+V**. The copied structure is added to the current drawing at the centre
 of the view, as one undo step; the same rules as opening a file apply to what is kept.
 
-This reads ReShiki's own clipboard data: its native format on Windows and macOS, and its
-text copy on Linux. On macOS the shortcut is **Cmd+Option+V**.
+This reads ReShiki's own clipboard data: its native format on Windows, macOS and Linux,
+and its text copy where no native clipboard is available. On macOS the shortcut is **Cmd+Option+V**.
 
 ## What is imported
 
@@ -46,7 +46,10 @@ text copy on Linux. On macOS the shortcut is **Cmd+Option+V**.
 Coordinates are scaled to MoleditPy's bond length and centred in the view.
 
 **Left out, and reported:** reaction arrows, text, shapes, reaction schemes, isotope
-labels, centroid atoms of π-complexes and their bonds, and hydrogen-interaction bonds.
+labels, centroid atoms of π-complexes and their bonds, hydrogen-interaction bonds,
+generic-structure sites (atom lists, link-node ranges, repeat units) and 3D models.
+Bonds ReShiki inferred from crystal distances are imported, with a note that their
+chemistry was never validated.
 The editor holds molecules, not figures.
 
 ## Install
@@ -58,7 +61,7 @@ and restart MoleditPy.
 
 ## Format support
 
-Written against ReShiki document format version 17 (ReShiki 0.10). A newer file still
+Written against ReShiki document format version 33 (ReShiki 0.13). A newer file still
 imports, with a note that its version is newer than the importer knows.
 
 ## Development

@@ -16,7 +16,7 @@ import sys
 from collections import Counter
 
 PLUGIN_NAME = "ReShiki Importer"
-PLUGIN_VERSION = "0.3.0"
+PLUGIN_VERSION = "0.4.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Open ReShiki drawings (.rsk) in the 2D editor, or paste them from ReShiki "
@@ -30,7 +30,7 @@ PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0, <6.0.0"
 
 EXTENSION = ".rsk"
 # The newest ReShiki document version this importer was written against.
-KNOWN_VERSION = 17
+KNOWN_VERSION = 33
 # MoleditPy's standard 2D bond length, in scene units.
 BOND_LENGTH = 75.0
 # ReShiki's default bond length, used when a drawing has no bonds to measure.
@@ -42,12 +42,13 @@ PASTE_SHORTCUT = "Ctrl+Alt+V"
 NATIVE_TYPE = "dev.reshiki.drawing"
 # The same cap ReShiki puts on clipboard data.
 CLIPBOARD_LIMIT = 64 * 1024 * 1024
-# The native format as Qt names it.
+# The native format as Qt names it; on Linux ReShiki also offers it as a MIME type.
 _CLIPBOARD_FORMATS = (
     f'application/x-qt-windows-mime;value="{NATIVE_TYPE}"',
     NATIVE_TYPE,
+    "application/x-reshiki-drawing+json",
 )
-# Where ReShiki has no native clipboard (Linux) it copies the document as text.
+# Where ReShiki has no native clipboard it copies the document as text.
 _TEXT_PREFIXES = ("RESHIKI_DRAWING_V1\n", "MORUNO_DRAWING_V1\n")
 
 WEDGE = 1
@@ -84,7 +85,16 @@ def parse_rsk(document):
 
     notes = Counter()
     if version > KNOWN_VERSION:
-        notes[f"file is ReShiki format {version}; importer knows up to {KNOWN_VERSION}"] += 1
+        notes[
+            f"file is ReShiki format {version}; importer knows up to {KNOWN_VERSION}"
+        ] += 1
+
+    generic = document.get("generic") or {}
+    alternatives = {site.get("atom") for site in generic.get("alternatives") or []}
+    if generic.get("links"):
+        notes["link-node repeat ranges dropped"] += len(generic["links"])
+    if generic.get("repeats"):
+        notes["repeat-unit brackets dropped"] += len(generic["repeats"])
 
     atoms = []
     kept = set()
@@ -96,6 +106,9 @@ def parse_rsk(document):
             y = float(raw["position"]["y"])
         except (KeyError, TypeError, ValueError) as exc:
             raise RskError(f"An atom in this drawing is incomplete: {exc}") from exc
+        if atom_id in alternatives:
+            notes["generic-structure sites skipped"] += 1
+            continue
         if symbol in ("", "*") or raw.get("centroid"):
             notes["centroid and placeholder atoms skipped"] += 1
             continue
@@ -126,6 +139,9 @@ def parse_rsk(document):
         if order == 0:
             notes["hydrogen-interaction bonds dropped"] += 1
             continue
+        if raw.get("distance_derived"):
+            # ReShiki itself treats these crystal bonds as unvalidated chemistry.
+            notes["crystal distance-derived bonds imported unvalidated"] += 1
         if order == 4:
             order = AROMATIC
         elif order in _APPROXIMATED:
@@ -148,6 +164,7 @@ def parse_rsk(document):
         ("annotations", "text annotations"),
         ("graphics", "shapes"),
         ("reactions", "reaction schemes"),
+        ("models", "3D models"),
     ):
         count = len(document.get(key) or [])
         if count:
@@ -188,7 +205,9 @@ def kekulize(atoms, bonds, notes):
                 }[bond["order"]]
             mol.AddBond(index[bond["a"]], index[bond["b"]], bond_type)
             if bond_type == Chem.BondType.AROMATIC:
-                mol.GetBondBetweenAtoms(index[bond["a"]], index[bond["b"]]).SetIsAromatic(True)
+                mol.GetBondBetweenAtoms(
+                    index[bond["a"]], index[bond["b"]]
+                ).SetIsAromatic(True)
         mol.UpdatePropertyCache(strict=False)
         Chem.FastFindRings(mol)
         Chem.Kekulize(mol, clearAromaticFlags=True)
@@ -199,7 +218,9 @@ def kekulize(atoms, bonds, notes):
         logging.warning("%s: could not kekulize aromatic bonds: %s", PLUGIN_NAME, exc)
         for bond in aromatic:
             bond["order"] = 1
-        notes["aromatic bonds that could not be kekulized imported as single"] += len(aromatic)
+        notes["aromatic bonds that could not be kekulized imported as single"] += len(
+            aromatic
+        )
 
 
 def layout(atoms, bonds):
@@ -217,7 +238,9 @@ def layout(atoms, bonds):
     cx = sum(x for x, _ in position.values()) / len(position)
     cy = sum(y for _, y in position.values()) / len(position)
     # Both programs draw with y pointing down, so no flip is needed.
-    return {key: ((x - cx) * scale, (y - cy) * scale) for key, (x, y) in position.items()}
+    return {
+        key: ((x - cx) * scale, (y - cy) * scale) for key, (x, y) in position.items()
+    }
 
 
 def read_rsk(path):
@@ -242,7 +265,11 @@ def convert(document):
 def summary(atoms, bonds, notes, verb="Imported"):
     text = f"{verb} {len(atoms)} atoms and {len(bonds)} bonds from ReShiki."
     if notes:
-        text += " " + "; ".join(f"{count} {label}" for label, count in sorted(notes.items())) + "."
+        text += (
+            " "
+            + "; ".join(f"{count} {label}" for label, count in sorted(notes.items()))
+            + "."
+        )
     return text
 
 
@@ -294,7 +321,9 @@ def macos_pasteboard_data(kind=NATIVE_TYPE):
             return None
         length = send_length(data, sel("length"))
         if length > CLIPBOARD_LIMIT:
-            raise RskError("The ReShiki drawing on the clipboard is too large to paste.")
+            raise RskError(
+                "The ReShiki drawing on the clipboard is too large to paste."
+            )
         start = send(data, sel("bytes"))
         # Copy out before the pool releases the NSData.
         return ctypes.string_at(start, length) if start and length else None
@@ -322,14 +351,16 @@ def clipboard_document(mime, native=None):
         text = mime.text() if mime.hasText() else ""
         for prefix in _TEXT_PREFIXES:
             if text.startswith(prefix):
-                text = text[len(prefix):]
+                text = text[len(prefix) :]
                 break
         else:
             return None
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
-        raise RskError(f"The ReShiki drawing on the clipboard could not be read: {exc}") from exc
+        raise RskError(
+            f"The ReShiki drawing on the clipboard could not be read: {exc}"
+        ) from exc
 
 
 def load_into_editor(context, atoms, bonds, positions, replace=True):
@@ -343,12 +374,18 @@ def load_into_editor(context, atoms, bonds, positions, replace=True):
     for atom in atoms:
         x, y = positions[atom["id"]]
         atom_id = scene.create_atom(
-            atom["symbol"], QPointF(x + cx, y + cy), charge=atom["charge"], radical=atom["radical"]
+            atom["symbol"],
+            QPointF(x + cx, y + cy),
+            charge=atom["charge"],
+            radical=atom["radical"],
         )
         items[atom["id"]] = scene.atom_items[atom_id]
     for bond in bonds:
         scene.create_bond(
-            items[bond["a"]], items[bond["b"]], bond_order=bond["order"], bond_stereo=bond["stereo"]
+            items[bond["a"]],
+            items[bond["b"]],
+            bond_order=bond["order"],
+            bond_stereo=bond["stereo"],
         )
     context.refresh_2d_scene()
     context.push_undo_checkpoint()
@@ -393,7 +430,8 @@ def paste_from_clipboard():
         document = clipboard_document(QApplication.clipboard().mimeData(), native)
         if document is None:
             _context.show_status_message(
-                "The clipboard holds no ReShiki drawing. Copy one in ReShiki first.", 5000
+                "The clipboard holds no ReShiki drawing. Copy one in ReShiki first.",
+                5000,
             )
             return
         atoms, bonds, positions, notes = convert(document)
