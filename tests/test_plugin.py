@@ -226,6 +226,47 @@ def test_centroids_and_their_bonds_are_skipped(plugin):
     assert notes["bonds to skipped atoms dropped"] == 2
 
 
+def test_generic_structure_sites_are_skipped_and_reported(plugin):
+    atoms, bonds, notes = plugin.parse_rsk(
+        drawing(
+            [atom(1, "*"), atom(2, x=42), atom(3, "C", 84)],
+            [bond(1, 2), bond(2, 3)],
+            generic={
+                "alternatives": [{"atom": 1, "choices": [{"kind": "element", "symbol": "Cl"}]}],
+                "links": [{"atom": 3, "min": 1, "max": 3}],
+                "repeats": [{"members": [2], "crossings": []}],
+            },
+        )
+    )
+    assert [a["id"] for a in atoms] == [2, 3]
+    assert len(bonds) == 1
+    assert notes["generic-structure sites skipped"] == 1
+    assert notes["link-node repeat ranges dropped"] == 1
+    assert notes["repeat-unit brackets dropped"] == 1
+
+
+def test_crystal_distance_bonds_are_kept_and_reported(plugin):
+    _, bonds, notes = plugin.parse_rsk(
+        drawing(
+            [atom(1, "Na"), atom(2, "Cl", 42), atom(3, "Na", 84)],
+            [bond(1, 2, distance_derived=True), bond(2, 3, distance_derived=True)],
+            version=30,
+        )
+    )
+    assert len(bonds) == 2
+    assert notes == {"crystal distance-derived bonds imported unvalidated": 2}
+
+
+def test_3d_models_are_reported(plugin):
+    _, _, notes = plugin.parse_rsk(drawing([atom(1)], models=[{}]))
+    assert notes == {"3D models skipped": 1}
+
+
+def test_format_30_loads_without_a_version_note(plugin):
+    _, _, notes = plugin.parse_rsk(drawing([atom(1)], version=30))
+    assert not notes
+
+
 def test_figure_content_is_reported(plugin):
     _, _, notes = plugin.parse_rsk(
         drawing([atom(1)], arrows=[{}, {}], annotations=[{}], graphics=[], reactions=[{}])
@@ -400,7 +441,12 @@ ETHANOL = drawing([atom(1), atom(2, x=42), atom(3, "O", 84)], [bond(1, 2), bond(
 
 
 @pytest.mark.parametrize(
-    "fmt", ['application/x-qt-windows-mime;value="dev.reshiki.drawing"', "dev.reshiki.drawing"]
+    "fmt",
+    [
+        'application/x-qt-windows-mime;value="dev.reshiki.drawing"',
+        "dev.reshiki.drawing",
+        "application/x-reshiki-drawing+json",
+    ],
 )
 def test_clipboard_reads_reshikis_native_format(plugin, fmt):
     # Windows hands back the whole rounded-up allocation, NULs included.

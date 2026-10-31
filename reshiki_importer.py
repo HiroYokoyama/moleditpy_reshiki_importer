@@ -16,7 +16,7 @@ import sys
 from collections import Counter
 
 PLUGIN_NAME = "ReShiki Importer"
-PLUGIN_VERSION = "0.3.0"
+PLUGIN_VERSION = "0.4.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Open ReShiki drawings (.rsk) in the 2D editor, or paste them from ReShiki "
@@ -30,7 +30,7 @@ PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0, <6.0.0"
 
 EXTENSION = ".rsk"
 # The newest ReShiki document version this importer was written against.
-KNOWN_VERSION = 17
+KNOWN_VERSION = 30
 # MoleditPy's standard 2D bond length, in scene units.
 BOND_LENGTH = 75.0
 # ReShiki's default bond length, used when a drawing has no bonds to measure.
@@ -42,12 +42,13 @@ PASTE_SHORTCUT = "Ctrl+Alt+V"
 NATIVE_TYPE = "dev.reshiki.drawing"
 # The same cap ReShiki puts on clipboard data.
 CLIPBOARD_LIMIT = 64 * 1024 * 1024
-# The native format as Qt names it.
+# The native format as Qt names it; on Linux ReShiki also offers it as a MIME type.
 _CLIPBOARD_FORMATS = (
     f'application/x-qt-windows-mime;value="{NATIVE_TYPE}"',
     NATIVE_TYPE,
+    "application/x-reshiki-drawing+json",
 )
-# Where ReShiki has no native clipboard (Linux) it copies the document as text.
+# Where ReShiki has no native clipboard it copies the document as text.
 _TEXT_PREFIXES = ("RESHIKI_DRAWING_V1\n", "MORUNO_DRAWING_V1\n")
 
 WEDGE = 1
@@ -86,6 +87,13 @@ def parse_rsk(document):
     if version > KNOWN_VERSION:
         notes[f"file is ReShiki format {version}; importer knows up to {KNOWN_VERSION}"] += 1
 
+    generic = document.get("generic") or {}
+    alternatives = {site.get("atom") for site in generic.get("alternatives") or []}
+    if generic.get("links"):
+        notes["link-node repeat ranges dropped"] += len(generic["links"])
+    if generic.get("repeats"):
+        notes["repeat-unit brackets dropped"] += len(generic["repeats"])
+
     atoms = []
     kept = set()
     for raw in document["atoms"]:
@@ -96,6 +104,9 @@ def parse_rsk(document):
             y = float(raw["position"]["y"])
         except (KeyError, TypeError, ValueError) as exc:
             raise RskError(f"An atom in this drawing is incomplete: {exc}") from exc
+        if atom_id in alternatives:
+            notes["generic-structure sites skipped"] += 1
+            continue
         if symbol in ("", "*") or raw.get("centroid"):
             notes["centroid and placeholder atoms skipped"] += 1
             continue
@@ -126,6 +137,9 @@ def parse_rsk(document):
         if order == 0:
             notes["hydrogen-interaction bonds dropped"] += 1
             continue
+        if raw.get("distance_derived"):
+            # ReShiki itself treats these crystal bonds as unvalidated chemistry.
+            notes["crystal distance-derived bonds imported unvalidated"] += 1
         if order == 4:
             order = AROMATIC
         elif order in _APPROXIMATED:
@@ -148,6 +162,7 @@ def parse_rsk(document):
         ("annotations", "text annotations"),
         ("graphics", "shapes"),
         ("reactions", "reaction schemes"),
+        ("models", "3D models"),
     ):
         count = len(document.get(key) or [])
         if count:
