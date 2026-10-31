@@ -289,8 +289,9 @@ def test_3d_models_are_reported(plugin):
     assert notes == {"3D models skipped": 1}
 
 
-def test_format_30_loads_without_a_version_note(plugin):
-    _, _, notes = plugin.parse_rsk(drawing([atom(1)], version=30))
+@pytest.mark.parametrize("version", [30, 31, 32, 33])
+def test_current_formats_load_without_a_version_note(plugin, version):
+    _, _, notes = plugin.parse_rsk(drawing([atom(1)], version=version))
     assert not notes
 
 

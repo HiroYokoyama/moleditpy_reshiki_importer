@@ -61,7 +61,7 @@ and restart MoleditPy.
 
 ## Format support
 
-Written against ReShiki document format version 30 (ReShiki 0.13). A newer file still
+Written against ReShiki document format version 33 (ReShiki 0.13). A newer file still
 imports, with a note that its version is newer than the importer knows.
 
 ## Development

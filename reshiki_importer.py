@@ -30,7 +30,7 @@ PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0, <6.0.0"
 
 EXTENSION = ".rsk"
 # The newest ReShiki document version this importer was written against.
-KNOWN_VERSION = 30
+KNOWN_VERSION = 33
 # MoleditPy's standard 2D bond length, in scene units.
 BOND_LENGTH = 75.0
 # ReShiki's default bond length, used when a drawing has no bonds to measure.
