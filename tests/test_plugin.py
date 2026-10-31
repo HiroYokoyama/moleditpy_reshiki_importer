@@ -138,14 +138,23 @@ def drawing(atoms, bonds=(), **extra):
 
 def benzene(order=4):
     atoms = [
-        atom(i + 1, x=42 * math.cos(math.radians(60 * i)), y=42 * math.sin(math.radians(60 * i)))
+        atom(
+            i + 1,
+            x=42 * math.cos(math.radians(60 * i)),
+            y=42 * math.sin(math.radians(60 * i)),
+        )
         for i in range(6)
     ]
     return drawing(atoms, [bond(i + 1, (i + 1) % 6 + 1, order) for i in range(6)])
 
 
 def test_metadata_matches_the_registry_contract(plugin):
-    for name in ("PLUGIN_NAME", "PLUGIN_VERSION", "PLUGIN_AUTHOR", "PLUGIN_DESCRIPTION"):
+    for name in (
+        "PLUGIN_NAME",
+        "PLUGIN_VERSION",
+        "PLUGIN_AUTHOR",
+        "PLUGIN_DESCRIPTION",
+    ):
         assert getattr(plugin, name).strip()
     assert re.fullmatch(r"\d+\.\d+\.\d+(?:a\d+)?", plugin.PLUGIN_VERSION)
     assert not hasattr(plugin, "run") and not hasattr(plugin, "autorun")
@@ -153,7 +162,9 @@ def test_metadata_matches_the_registry_contract(plugin):
 
 def test_importing_needs_no_qt_or_rdkit():
     source = PLUGIN.read_text(encoding="utf-8")
-    top_level = [line for line in source.splitlines() if line.startswith(("import ", "from "))]
+    top_level = [
+        line for line in source.splitlines() if line.startswith(("import ", "from "))
+    ]
     assert not any("PySide6" in line or "rdkit" in line for line in top_level)
 
 
@@ -170,7 +181,11 @@ def test_initialize_registers_the_opener_drop_handler_and_paste(plugin):
 def test_atoms_charges_and_radicals(plugin):
     atoms, bonds, notes = plugin.parse_rsk(
         drawing(
-            [atom(1, "N", charge=1), atom(2, "C", 42, radical_electrons=1), atom(3, "O", 84)],
+            [
+                atom(1, "N", charge=1),
+                atom(2, "C", 42, radical_electrons=1),
+                atom(3, "O", 84),
+            ],
             [bond(1, 2), bond(2, 3, 2)],
         )
     )
@@ -185,10 +200,20 @@ def test_atoms_charges_and_radicals(plugin):
 
 @pytest.mark.parametrize(
     "display, stereo",
-    [("wedge", 1), ("hollow_wedge", 1), ("bold", 1), ("hash", 2), ("hashed", 2), ("wavy", 0), ("plain", 0)],
+    [
+        ("wedge", 1),
+        ("hollow_wedge", 1),
+        ("bold", 1),
+        ("hash", 2),
+        ("hashed", 2),
+        ("wavy", 0),
+        ("plain", 0),
+    ],
 )
 def test_single_bond_displays_become_stereo(plugin, display, stereo):
-    _, bonds, _ = plugin.parse_rsk(drawing([atom(1), atom(2, x=42)], [bond(1, 2, 1, display)]))
+    _, bonds, _ = plugin.parse_rsk(
+        drawing([atom(1), atom(2, x=42)], [bond(1, 2, 1, display)])
+    )
     assert bonds[0]["stereo"] == stereo
 
 
@@ -232,7 +257,9 @@ def test_generic_structure_sites_are_skipped_and_reported(plugin):
             [atom(1, "*"), atom(2, x=42), atom(3, "C", 84)],
             [bond(1, 2), bond(2, 3)],
             generic={
-                "alternatives": [{"atom": 1, "choices": [{"kind": "element", "symbol": "Cl"}]}],
+                "alternatives": [
+                    {"atom": 1, "choices": [{"kind": "element", "symbol": "Cl"}]}
+                ],
                 "links": [{"atom": 3, "min": 1, "max": 3}],
                 "repeats": [{"members": [2], "crossings": []}],
             },
@@ -269,9 +296,15 @@ def test_format_30_loads_without_a_version_note(plugin):
 
 def test_figure_content_is_reported(plugin):
     _, _, notes = plugin.parse_rsk(
-        drawing([atom(1)], arrows=[{}, {}], annotations=[{}], graphics=[], reactions=[{}])
+        drawing(
+            [atom(1)], arrows=[{}, {}], annotations=[{}], graphics=[], reactions=[{}]
+        )
     )
-    assert notes == {"arrows skipped": 2, "text annotations skipped": 1, "reaction schemes skipped": 1}
+    assert notes == {
+        "arrows skipped": 2,
+        "text annotations skipped": 1,
+        "reaction schemes skipped": 1,
+    }
 
 
 def test_abbreviation_members_are_imported_expanded(plugin):
@@ -293,7 +326,13 @@ def test_newer_versions_load_with_a_note(plugin):
 
 @pytest.mark.parametrize(
     "document",
-    [[], {"atoms": []}, {"version": 15}, {"version": "15", "atoms": []}, {"version": 15, "atoms": [{"id": 1}]}],
+    [
+        [],
+        {"atoms": []},
+        {"version": 15},
+        {"version": "15", "atoms": []},
+        {"version": 15, "atoms": [{"id": 1}]},
+    ],
 )
 def test_malformed_documents_are_rejected(plugin, document):
     with pytest.raises(plugin.RskError):
@@ -301,7 +340,9 @@ def test_malformed_documents_are_rejected(plugin, document):
 
 
 def test_layout_uses_the_editor_bond_length_and_centres(plugin):
-    atoms, bonds, _ = plugin.parse_rsk(drawing([atom(1, x=100, y=50), atom(2, x=142, y=50)], [bond(1, 2)]))
+    atoms, bonds, _ = plugin.parse_rsk(
+        drawing([atom(1, x=100, y=50), atom(2, x=142, y=50)], [bond(1, 2)])
+    )
     positions = plugin.layout(atoms, bonds)
     assert positions[1] == pytest.approx((-37.5, 0.0))
     assert positions[2] == pytest.approx((37.5, 0.0))
@@ -378,7 +419,9 @@ def test_open_centres_the_molecule_in_the_current_view(plugin, qt_stub, tmp_path
 
     window = types.SimpleNamespace(init_manager=types.SimpleNamespace(view_2d=View()))
     path = tmp_path / "ethane.rsk"
-    path.write_text(json.dumps(drawing([atom(1), atom(2, x=42)], [bond(1, 2)])), encoding="utf-8")
+    path.write_text(
+        json.dumps(drawing([atom(1), atom(2, x=42)], [bond(1, 2)])), encoding="utf-8"
+    )
     context = FakeContext()
     context.get_main_window = lambda: window
     plugin.initialize(context)
@@ -387,7 +430,9 @@ def test_open_centres_the_molecule_in_the_current_view(plugin, qt_stub, tmp_path
     assert placed == [pytest.approx((462.5, -200.0)), pytest.approx((537.5, -200.0))]
 
 
-def test_open_rejects_a_broken_file_without_touching_the_drawing(plugin, qt_stub, tmp_path):
+def test_open_rejects_a_broken_file_without_touching_the_drawing(
+    plugin, qt_stub, tmp_path
+):
     path = tmp_path / "broken.rsk"
     path.write_text("{not json", encoding="utf-8")
     context = FakeContext()
@@ -409,7 +454,9 @@ def test_drop_handler_claims_only_rsk_files(plugin, qt_stub, tmp_path):
     assert context.calls == []
 
 
-@pytest.mark.skipif(not RESHIKI.is_dir(), reason="ReShiki checkout not found beside this repository")
+@pytest.mark.skipif(
+    not RESHIKI.is_dir(), reason="ReShiki checkout not found beside this repository"
+)
 def test_every_drawing_in_the_reshiki_repository_imports():
     """Parity check against real files, when ReShiki is checked out next to this repo."""
     spec = importlib.util.spec_from_file_location("reshiki_importer", PLUGIN)
@@ -461,7 +508,9 @@ def test_clipboard_reads_reshikis_text_copy(plugin, prefix):
     assert plugin.clipboard_document(mime) == ETHANOL
 
 
-@pytest.mark.parametrize("mime", [None, FakeMime(), FakeMime(text="CCO"), FakeMime(text='{"version": 15}')])
+@pytest.mark.parametrize(
+    "mime", [None, FakeMime(), FakeMime(text="CCO"), FakeMime(text='{"version": 15}')]
+)
 def test_clipboard_without_a_reshiki_drawing(plugin, mime):
     assert plugin.clipboard_document(mime) is None
 
